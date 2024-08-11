@@ -1,6 +1,10 @@
-from hmac import compare_digest
+import logging
 
 from fasthtml.common import *
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Initialize the FastHTML application
 app, rt = fast_app('data/todo.db')
@@ -23,9 +27,16 @@ login_redirect = RedirectResponse('/login', status_code=303)
 
 
 def before(req, sess):
-    auth = req.scope['auth'] = sess.get('auth', None)
-    if not auth: return login_redirect
-    todos.xtra(user=auth)
+    try:
+        auth = req.scope['auth'] = sess.get('auth', None)
+        if not auth:
+            logger.info(f"Unauthenticated access attempt to {req.url.path}")
+            return login_redirect
+        todos.xtra(user=auth)
+        logger.info(f"User {auth} authenticated for {req.url.path}")
+    except Exception as e:
+        logger.error(f"Error in authentication middleware: {str(e)}")
+        return login_redirect
 
 
 # Create a Beforeware instance
@@ -117,6 +128,8 @@ def post(user: User):
 # CREATE (INSERT) operation for todos
 @rt("/todos")
 def post(title: str, auth):
+    if not title or len(title) > 100:  # Basic validation
+        return "Invalid title", 400
     new_todo = Todo(id=None, title=title, completed=False, user=auth)
     return todos.insert(new_todo)
 
@@ -143,6 +156,8 @@ def get(id: int):
 
 @rt("/todos/{id:int}")
 def put(id: int, title: str, completed: bool):
+    if not title or len(title) > 100:  # Basic validation
+        return "Invalid title", 400
     existing_todo = todos[id]
     existing_todo.title = title
     existing_todo.completed = completed
